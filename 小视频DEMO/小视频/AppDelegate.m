@@ -28,6 +28,9 @@
     
     self.window.rootViewController = nav;
     
+    
+    NSLog(@"haha ");
+    
     return YES;
 }
 
