@@ -78,11 +78,11 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     [_captureSession stopRunning];
     
 }
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-
-
     self.view.backgroundColor = [UIColor blackColor];
+    self.title = @"小视频";
     
     //绘制UI
     [self initUI];
@@ -90,17 +90,19 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     //获取授权
     [self getAuthorization];
 
+    [self loadSmallVideoPreviewLayer];
 }
 
 #pragma mark  绘制UI =====
-- (void)initUI
-{
+- (void)initUI{
     
     UIView *videoView =[[UIView alloc] init];
     videoView.frame = CGRectMake(0, 0, KSCREEN_WIDTH, KSCREEN_HEIGHT/2);
     videoView.backgroundColor = [UIColor whiteColor];
     [self.view addSubview:videoView];
     self.videoView = videoView;
+    self.videoView.layer.masksToBounds = YES;
+
     
     UIView *progressView = [[UIView alloc] init];
     progressView.frame = CGRectMake(0, CGRectGetMaxY(self.videoView.frame)-4, KSCREEN_WIDTH, 4);
@@ -108,7 +110,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     progressView.backgroundColor = [UIColor greenColor];
     [self.view addSubview:progressView];
     self.progressView = progressView;
-    
     
     UILabel *cancelTip = [[UILabel alloc] init];
     CGSize sizi= CGSizeMake(120, 20);
@@ -158,7 +159,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     [self.view bringSubviewToFront:self.changeBtn];
     [self.view bringSubviewToFront:self.flashModelBtn];
     
-    self.videoView.layer.masksToBounds = YES;
     [self addGenstureRecognizer];
 }
 
@@ -195,7 +195,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     
     
     //此处检测摄像头授权是否打开
-    
     switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo])
     {
         case AVAuthorizationStatusAuthorized: //已授权，可使用
@@ -235,13 +234,8 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     
     //检测麦克风功能是否打开
     [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted) {
-        if (!granted)
-        {
+        if (!granted){
             [self showMsgWithTitle:@"麦克风功能未开启" andContent:@"请在iPhone的\"设置-隐私-麦克风\"中允许少儿时光访问你的麦克风"];
-        }
-        else
-        {
-            
         }
     }];
 
@@ -249,7 +243,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
 }
 
 // 获取摄像头-->前/后
-
 - (AVCaptureDevice *)deviceWithMediaType:(NSString *)mediaType preferringPosition:(AVCaptureDevicePosition)position
 {
     NSArray *devices = [AVCaptureDevice devicesWithMediaType:mediaType];
@@ -267,79 +260,103 @@ typedef NS_ENUM(NSInteger,VideoStatus){
 
 
 #pragma mark
-#pragma mark  配置病初始化设备 =====
-- (void)setupAVCaptureInfo
-{
-    //添加会话
-    [self loadSmallVideoSession];
+#pragma mark  配置并初始化设备 =====
+- (void)setupAVCaptureInfo{
+    
+    NSError *error;
+    // 1. 创建捕捉会话。AVCaptureSession
+    _captureSession = [[AVCaptureSession alloc] init];
+    
+    // 2. 设置分辨率
+    AVCaptureSessionPreset SessionPreset = AVCaptureSessionPresetPhoto;
+    if ([_captureSession canSetSessionPreset:SessionPreset]) {
+        _captureSession.sessionPreset = SessionPreset;
+    }
+    
+    // 3.1 视频输入源
+    int frameRate;
+    CMTime frameDuration = kCMTimeInvalid;
+    AVCaptureDevice *videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+    
+    if ([videoDevice lockForConfiguration:&error]) {
+        
+        frameRate = 30;
+        frameDuration = CMTimeMake( 1, frameRate );
+        
+        videoDevice.activeVideoMaxFrameDuration = frameDuration;
+        videoDevice.activeVideoMinFrameDuration = frameDuration;
+        [videoDevice unlockForConfiguration];
+    }
+    
+    AVCaptureDeviceInput *deviceInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error];
+    _videoInput = deviceInput;
+    
+    
+    // 3.2 音频输入源
+    AVCaptureDevice *audioDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+    _audioInput = [[AVCaptureDeviceInput alloc] initWithDevice:audioDevice error:&error];
+    _audioDevice = audioDevice;
+    if (error) {
+        NSLog(@"取得录音设备时出错%@",error);
+        return;
+    }
+    
+    
+    // 4. 初始化输出对象
+    _movieOutput = [[AVCaptureMovieFileOutput alloc] init];
+    AVCaptureConnection *captureConnection = [_movieOutput connectionWithMediaType:AVMediaTypeVideo];
+    // 视频稳定设置  光学防抖
+    if ([captureConnection isVideoStabilizationSupported]) {
+        captureConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeAuto;
+    }
+    captureConnection.videoScaleAndCropFactor = captureConnection.videoMaxScaleAndCropFactor;
+    
+    
+    // 5. 开始进行配置
     [_captureSession beginConfiguration];
     
-    
-    //添加视频设备,输入源对象,输出对象
-    [self loadSmallVideoVideo];
-    
-    
-    //添加音频设备,输入对象,输出对象
-    [self loadSmallVideoAudio];
+    // 将视频输入对象添加到会话 (AVCaptureSession) 中
+    if ([_captureSession canAddInput:_videoInput]) {
+        [_captureSession addInput:_videoInput];
+    }
     
     
-    //添加视频预览图层
-    [self loadSmallVideoPreviewLayer];
+    // 将音频输入对象添加到会话 (AVCaptureSession) 中
+    if ([_captureSession canAddInput:_audioInput]) {
+        [_captureSession addInput:_audioInput];
+    }
+    
+    // 将输出对象添加到会话 (AVCaptureSession) 中
+    if ([_captureSession canAddOutput:_movieOutput]) {
+        [_captureSession addOutput:_movieOutput];
+    }
     
     [_captureSession commitConfiguration];
     
-    //开启会话-->注意,不等于开始录制
+    // 6. 开启会话-->注意 不等于开始录制
     [_captureSession startRunning];
     
+    
+//    //添加视频设备,输入源对象,输出对象
+//    [self loadSmallVideoVideo];
+//
+//
+//    //添加音频设备,输入对象,输出对象
+//    [self loadSmallVideoAudio];
+//
+//
+//    //添加视频预览图层
+//    [self loadSmallVideoPreviewLayer];
+//
+//    [_captureSession commitConfiguration];
+//
+//    //开启会话-->注意,不等于开始录制
+//    [_captureSession startRunning];
+    
 }
 
-// 添加会话  =====
-- (void)loadSmallVideoSession
-{
-    _captureSession = [[AVCaptureSession alloc] init];
-    if ([_captureSession canSetSessionPreset:AVCaptureSessionPreset640x480]) {
-        
-        _captureSession.sessionPreset = AVCaptureSessionPreset640x480;
 
-    }
-    
-    //设置视频分辨率
-    /*  通常支持如下格式
-     (
-     AVAssetExportPresetLowQuality,
-     AVAssetExportPreset960x540,
-     AVAssetExportPreset640x480,
-     AVAssetExportPresetMediumQuality,
-     AVAssetExportPreset1920x1080,
-     AVAssetExportPreset1280x720,
-     AVAssetExportPresetHighestQuality,
-     AVAssetExportPresetAppleM4A
-     )
-     */
-   
-}
-// 添加视频设备,输入源对象,输出对象  ===
-- (void)loadSmallVideoVideo
-{
-    // 获取摄像头输入设备， 创建 AVCaptureDeviceInput 对象
-    /* MediaType
-     AVF_EXPORT NSString *const AVMediaTypeVideo                 NS_AVAILABLE(10_7, 4_0);       //视频
-     AVF_EXPORT NSString *const AVMediaTypeAudio                 NS_AVAILABLE(10_7, 4_0);       //音频
-     AVF_EXPORT NSString *const AVMediaTypeText                  NS_AVAILABLE(10_7, 4_0);
-     AVF_EXPORT NSString *const AVMediaTypeClosedCaption         NS_AVAILABLE(10_7, 4_0);
-     AVF_EXPORT NSString *const AVMediaTypeSubtitle              NS_AVAILABLE(10_7, 4_0);
-     AVF_EXPORT NSString *const AVMediaTypeTimecode              NS_AVAILABLE(10_7, 4_0);
-     AVF_EXPORT NSString *const AVMediaTypeMetadata              NS_AVAILABLE(10_8, 6_0);
-     AVF_EXPORT NSString *const AVMediaTypeMuxed                 NS_AVAILABLE(10_7, 4_0);
-     */
-    
-    /* AVCaptureDevicePosition
-     typedef NS_ENUM(NSInteger, AVCaptureDevicePosition) {
-     AVCaptureDevicePositionUnspecified         = 0,
-     AVCaptureDevicePositionBack                = 1,            //后置摄像头
-     AVCaptureDevicePositionFront               = 2             //前置摄像头
-     } NS_AVAILABLE(10_7, 4_0) __TVOS_PROHIBITED;
-     */
+- (void)loadSmallVideoVideo{
     
     //1.0 获取视频设备(视频模式,后摄像头)
     _videoDevice = [self deviceWithMediaType:AVMediaTypeVideo preferringPosition:AVCaptureDevicePositionBack];
@@ -367,6 +384,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     if ([_captureSession canAddOutput:_movieOutput]) {
         
         [_captureSession addOutput:_movieOutput];
+        
         AVCaptureConnection *captureConnection = [_movieOutput connectionWithMediaType:AVMediaTypeVideo];
         
         //设置视频旋转方向
@@ -378,9 +396,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
          AVCaptureVideoOrientationLandscapeLeft      = 4,
          } NS_AVAILABLE(10_7, 4_0) __TVOS_PROHIBITED;
          */
-        //        if ([captureConnection isVideoOrientationSupported]) {
-        //            [captureConnection setVideoOrientation:AVCaptureVideoOrientationPortrait];
-        //        }
         
         // 视频稳定设置  光学防抖
         if ([captureConnection isVideoStabilizationSupported]) {
@@ -438,16 +453,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     
 }
 
-//下面这2个也可以获取前后摄像头,不过有一定的风险,假如手机又问题,找不到对应的 UniqueID 设备,则呵呵了
-//- (AVCaptureDevice *)frontCamera
-//{
-//    return [AVCaptureDevice deviceWithUniqueID:@"com.apple.avfoundation.avcapturedevice.built-in_video:1"];
-//}
-//
-//- (AVCaptureDevice *)backCamera
-//{
-//    return [AVCaptureDevice deviceWithUniqueID:@"com.apple.avfoundation.avcapturedevice.built-in_video:0"];
-//}
 #pragma mark
 #pragma mark  触控相关
 

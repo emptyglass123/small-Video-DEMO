@@ -8,6 +8,7 @@
 
 #import "AppDelegate.h"
 #import "WDSmallVideoViewController.h"
+#import "ViewController.h"
 
 @interface AppDelegate ()
 
@@ -23,14 +24,10 @@
     self.window.backgroundColor = [UIColor whiteColor];
     [self.window makeKeyAndVisible];
 
-    WDSmallVideoViewController *vc = [[WDSmallVideoViewController alloc]  init];
+    ViewController *vc = [[ViewController alloc]  init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
-    
     self.window.rootViewController = nav;
-    
-    
-    NSLog(@"haha ");
-    
+
     return YES;
 }
 
