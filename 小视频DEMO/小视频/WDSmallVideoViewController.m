@@ -63,20 +63,14 @@ typedef NS_ENUM(NSInteger,VideoStatus){
 
 @implementation WDSmallVideoViewController
 
--(void)viewWillAppear:(BOOL)animated
-{
+-(void)viewWillAppear:(BOOL)animated{
     [super viewWillAppear:animated];
-    
     [_captureSession startRunning];
-    
 }
 
--(void)viewWillDisappear:(BOOL)animated
-{
+-(void)viewWillDisappear:(BOOL)animated{
     [super viewWillDisappear:animated];
-
     [_captureSession stopRunning];
-    
 }
 
 - (void)viewDidLoad {
@@ -84,26 +78,23 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     self.view.backgroundColor = [UIColor blackColor];
     self.title = @"小视频";
     
-    //绘制UI
+    // 绘制UI
     [self initUI];
     
-    //获取授权
-    [self getAuthorization];
-
-    [self loadSmallVideoPreviewLayer];
+    // 启动视频
+    [self startVideo];
 }
 
 #pragma mark  绘制UI =====
 - (void)initUI{
     
     UIView *videoView =[[UIView alloc] init];
-    videoView.frame = CGRectMake(0, 0, KSCREEN_WIDTH, KSCREEN_HEIGHT/2);
-    videoView.backgroundColor = [UIColor whiteColor];
+    videoView.frame = CGRectMake(0, 64, KSCREEN_WIDTH, KSCREEN_HEIGHT/2);
+    videoView.backgroundColor = [UIColor blackColor];
     [self.view addSubview:videoView];
     self.videoView = videoView;
     self.videoView.layer.masksToBounds = YES;
 
-    
     UIView *progressView = [[UIView alloc] init];
     progressView.frame = CGRectMake(0, CGRectGetMaxY(self.videoView.frame)-4, KSCREEN_WIDTH, 4);
     progressView.center = CGPointMake(KSCREEN_WIDTH/2, CGRectGetMaxY(self.videoView.frame) - 2);
@@ -123,8 +114,8 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     self.cancelTip = cancelTip;
     
     UILabel *tapBtn = [UILabel new];
-    tapBtn.frame = CGRectMake(100, KSCREEN_HEIGHT/2, 100, 100);
-    tapBtn.center = CGPointMake(KSCREEN_WIDTH/2, KSCREEN_HEIGHT/2 + 120);
+    tapBtn.frame = CGRectMake(100, KSCREEN_HEIGHT/2 , 100, 100);
+    tapBtn.center = CGPointMake(KSCREEN_WIDTH/2, CGRectGetMaxY(self.videoView.frame) + 120);
     tapBtn.text = @"按住";
     tapBtn.textAlignment = NSTextAlignmentCenter;
     tapBtn.textColor = [UIColor greenColor];
@@ -181,7 +172,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
 
 #pragma mark
 #pragma mark  获取设备授权
-- (void)getAuthorization
+- (void)startVideo
 {
     /*
      AVAuthorizationStatusNotDetermined = 0,// 未进行授权选择
@@ -200,7 +191,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
         case AVAuthorizationStatusAuthorized: //已授权，可使用
         {
             NSLog(@"授权摄像头使用成功");
-            [self setupAVCaptureInfo];
+            [self getAudioAuthorization];
             break;
         }
         case AVAuthorizationStatusNotDetermined://未进行授权选择
@@ -209,38 +200,40 @@ typedef NS_ENUM(NSInteger,VideoStatus){
             [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
                 
                 if(granted){    //用户授权成功
-                    
-                    [self setupAVCaptureInfo];
-                    return;
-                    
+                    [self getAudioAuthorization];
                 } else {       //用户拒绝授权
-                    
                     [self pop];
-                    [self showMsgWithTitle:@"出错了" andContent:@"用户拒绝授权摄像头的使用权,返回上一页.请打开\n设置-->隐私/通用/相机中允许广丰圈访问您的像机"];
-                    return;
+                    [self showMsgWithTitle:@"出错了" andContent:@"用户拒绝授权摄像头的使用权,返回上一页.请打开\n设置-->隐私/通用/相机中允许访问您的像机"];
                 }
             }];
             break;
         }
-        default:                                    //用户拒绝授权/未授权
+        case AVAuthorizationStatusDenied: // 用户拒绝App使用
+        {   [self pop];
+            [self showMsgWithTitle:@"获取相机权限出错" andContent:@"拒绝授权,返回上一页.请检查下\n设置-->隐私/相机权限设置"];
+            break;
+        }
+        default:   // 权限控制
         {
             [self pop];
-            [self showMsgWithTitle:@"出错了" andContent:@"拒绝授权,返回上一页.请检查下\n设置-->隐私/通用等权限设置"];
+            [self showMsgWithTitle:@"家长控制" andContent:@"拒绝授权,返回上一页.请检查下\n设置-->隐私/通用等权限设置"];
             break;
         }
     }
-    
-    
-    
+}
+
+- (void)getAudioAuthorization{
     //检测麦克风功能是否打开
     [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted) {
         if (!granted){
             [self showMsgWithTitle:@"麦克风功能未开启" andContent:@"请在iPhone的\"设置-隐私-麦克风\"中允许少儿时光访问你的麦克风"];
+        }else{
+            [self setupAVCaptureConfig];
+            [self loadSmallVideoPreviewLayer];
         }
     }];
-
-    
 }
+
 
 // 获取摄像头-->前/后
 - (AVCaptureDevice *)deviceWithMediaType:(NSString *)mediaType preferringPosition:(AVCaptureDevicePosition)position
@@ -261,7 +254,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
 
 #pragma mark
 #pragma mark  配置并初始化设备 =====
-- (void)setupAVCaptureInfo{
+- (void)setupAVCaptureConfig{
     
     NSError *error;
     // 1. 创建捕捉会话。AVCaptureSession
@@ -335,95 +328,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     
     // 6. 开启会话-->注意 不等于开始录制
     [_captureSession startRunning];
-    
-    
-//    //添加视频设备,输入源对象,输出对象
-//    [self loadSmallVideoVideo];
-//
-//
-//    //添加音频设备,输入对象,输出对象
-//    [self loadSmallVideoAudio];
-//
-//
-//    //添加视频预览图层
-//    [self loadSmallVideoPreviewLayer];
-//
-//    [_captureSession commitConfiguration];
-//
-//    //开启会话-->注意,不等于开始录制
-//    [_captureSession startRunning];
-    
-}
 
-
-- (void)loadSmallVideoVideo{
-    
-    //1.0 获取视频设备(视频模式,后摄像头)
-    _videoDevice = [self deviceWithMediaType:AVMediaTypeVideo preferringPosition:AVCaptureDevicePositionBack];
-    
-    
-    //2.0 初始化输入源对象
-    NSError *videoError;
-    _videoInput = [[AVCaptureDeviceInput alloc] initWithDevice:_videoDevice error:&videoError];
-    if (videoError) {
-        NSLog(@"取得摄像头设备时出错 %@",videoError);
-        return;
-    }
-    
-    //2.1 将视频输入对象添加到会话 (AVCaptureSession) 中
-    if ([_captureSession canAddInput:_videoInput]) {
-        [_captureSession addInput:_videoInput];
-    }
-    
-    
-    //3.0 初始化输出对象
-    _movieOutput = [[AVCaptureMovieFileOutput alloc] init];
-    
-    
-    //3.1 将视频输出对象添加到会话 (AVCaptureSession) 中
-    if ([_captureSession canAddOutput:_movieOutput]) {
-        
-        [_captureSession addOutput:_movieOutput];
-        
-        AVCaptureConnection *captureConnection = [_movieOutput connectionWithMediaType:AVMediaTypeVideo];
-        
-        //设置视频旋转方向
-        /*
-         typedef NS_ENUM(NSInteger, AVCaptureVideoOrientation) {
-         AVCaptureVideoOrientationPortrait           = 1,
-         AVCaptureVideoOrientationPortraitUpsideDown = 2,
-         AVCaptureVideoOrientationLandscapeRight     = 3,
-         AVCaptureVideoOrientationLandscapeLeft      = 4,
-         } NS_AVAILABLE(10_7, 4_0) __TVOS_PROHIBITED;
-         */
-        
-        // 视频稳定设置  光学防抖
-        if ([captureConnection isVideoStabilizationSupported]) {
-            captureConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeAuto;
-        }
-        
-        captureConnection.videoScaleAndCropFactor = captureConnection.videoMaxScaleAndCropFactor;
-    }
-
-}
-
-//  添加音频设备,输入对象,输出对象  ===
-- (void)loadSmallVideoAudio
-{
-    NSError *audioError;
-    //1.0 添加一个音频输入设备
-    _audioDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-    
-    //2.0 初始化音频输入对象
-    _audioInput = [[AVCaptureDeviceInput alloc] initWithDevice:_audioDevice error:&audioError];
-    if (audioError) {
-        NSLog(@"取得录音设备时出错%@",audioError);
-        return;
-    }
-    //3.0 将音频输入对象添加到会话 (AVCaptureSession) 中
-    if ([_captureSession canAddInput:_audioInput]) {
-        [_captureSession addInput:_audioInput];
-    }
 }
 
 // 添加并初始化视频预览图层 ====
@@ -441,6 +346,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
      */
     //有时候需要拍摄完整屏幕大小的时候可以修改这个
     //    _captureVideoPreviewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+    
     // 如果预览图层和视频方向不一致,可以修改这个
     _captureVideoPreviewLayer.connection.videoOrientation = [_movieOutput connectionWithMediaType:AVMediaTypeVideo].videoOrientation;
     _captureVideoPreviewLayer.position = CGPointMake(self.view.width*0.5,self.videoView.height*0.5);
@@ -455,7 +361,6 @@ typedef NS_ENUM(NSInteger,VideoStatus){
 
 #pragma mark
 #pragma mark  触控相关
-
 -(void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     CGPoint point = [[touches anyObject] locationInView:self.view];
@@ -487,7 +392,7 @@ typedef NS_ENUM(NSInteger,VideoStatus){
     CGPoint point = [touch locationInView:self.view];
     BOOL condition = [self isInBtnRect:point];
     /*
-     结束时候咱们设定有两种情况依然算录制成功
+     结束时  设定有两种情况依然算录制成功
      1.抬手时,录制时长 > 1/3总时长
      2.录制进度条完成时,就算手指超出按钮范围也算录制成功 -- 此时 end 方法不会调用,因为用户手指还在屏幕上,所以直接代码调用录制成功的方法,将控制器切换
      */
